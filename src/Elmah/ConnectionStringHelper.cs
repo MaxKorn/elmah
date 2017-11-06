@@ -22,7 +22,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: ConnectionStringHelper.cs 641 2009-06-01 17:38:40Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ConnectionStringHelper.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -41,7 +41,7 @@ namespace Elmah
     /// Helper class for resolving connection strings.
     /// </summary>
 
-    static class ConnectionStringHelper
+    internal class ConnectionStringHelper
     {
         /// <summary>
         /// Gets the connection string from the given configuration 
@@ -52,30 +52,33 @@ namespace Elmah
         {
             Debug.Assert(config != null);
 
+#if !NET_1_1 && !NET_1_0
             //
             // First look for a connection string name that can be 
             // subsequently indexed into the <connectionStrings> section of 
             // the configuration to get the actual connection string.
             //
 
-            var connectionStringName = config.Find("connectionStringName", string.Empty);
+            string connectionStringName = (string)config["connectionStringName"] ?? string.Empty;
 
             if (connectionStringName.Length > 0)
             {
-                var settings = ConfigurationManager.ConnectionStrings[connectionStringName];
+                ConnectionStringSettings settings = ConfigurationManager.ConnectionStrings[connectionStringName];
 
                 if (settings == null)
                     return string.Empty;
 
                 return settings.ConnectionString ?? string.Empty;
             }
+#endif
 
             //
             // Connection string name not found so see if a connection 
             // string was given directly.
             //
 
-            var connectionString = config.Find("connectionString", string.Empty);
+            string connectionString = Mask.NullString((string)config["connectionString"]);
+
             if (connectionString.Length > 0)
                 return connectionString;
 
@@ -86,40 +89,50 @@ namespace Elmah
             // be used.
             //
 
-            var connectionStringAppKey = config.Find("connectionStringAppKey", string.Empty);
-            return connectionStringAppKey.Length > 0 
-                 ? ConfigurationManager.AppSettings[connectionStringAppKey] 
-                 : string.Empty;
+            string connectionStringAppKey = Mask.NullString((string)config["connectionStringAppKey"]);
+
+            if (connectionStringAppKey.Length == 0)
+                return string.Empty;
+
+            return Configuration.AppSettings[connectionStringAppKey];
         }
 
+#if NET_1_1 || NET_1_0
         /// <summary>
-        /// Gets the provider name from the named connection string (if supplied) 
-        /// from the given configuration dictionary.
+        /// Extracts the Data Source file path from a connection string
         /// </summary>
-
-        public static string GetConnectionStringProviderName(IDictionary config)
+        /// <param name="connectionString">The connection string</param>
+        /// <returns>File path to the Data Source element of a connection string</returns>
+        public static string GetDataSourceFilePath(string connectionString)
         {
-            Debug.Assert(config != null);
+            Debug.AssertStringNotEmpty(connectionString);
 
-            //
-            // First look for a connection string name that can be 
-            // subsequently indexed into the <connectionStrings> section of 
-            // the configuration to get the actual connection string.
-            //
+            string result = string.Empty;
+            string loweredConnectionString = connectionString.ToLower();
+            int dataSourcePosition = loweredConnectionString.IndexOf("data source");
+            if (dataSourcePosition >= 0)
+            {
+                int equalsPosition = loweredConnectionString.IndexOf('=', dataSourcePosition);
+                if (equalsPosition >= 0)
+                {
+                    int semiColonPosition = loweredConnectionString.IndexOf(';', equalsPosition);
+                    if (semiColonPosition < equalsPosition)
+                        result = connectionString.Substring(equalsPosition + 1);
+                    else
+                        result = connectionString.Substring(equalsPosition + 1, semiColonPosition - equalsPosition - 1);
+                    result = result.Trim();
+                    char firstChar = result[0];
+                    char lastChar = result[result.Length - 1];
+                    if (firstChar == lastChar && (firstChar == '\'' || firstChar == '\"') && result.Length > 1)
+                    {
+                        result = result.Substring(1, result.Length - 2);
+                    }
+                }
+            }
 
-            var connectionStringName = config.Find("connectionStringName", string.Empty);
-
-            if (connectionStringName.Length == 0)
-                return string.Empty;
-
-            var settings = ConfigurationManager.ConnectionStrings[connectionStringName];
-
-            if (settings == null)
-                return string.Empty;
-
-            return settings.ProviderName ?? string.Empty;
+            return result;
         }
-
+#else
         /// <summary>
         /// Extracts the Data Source file path from a connection string
         /// ~/ gets resolved as does |DataDirectory|
@@ -129,7 +142,7 @@ namespace Elmah
         {
             Debug.AssertStringNotEmpty(connectionString);
 
-            var builder = new DbConnectionStringBuilder();
+            DbConnectionStringBuilder builder = new DbConnectionStringBuilder();
             return GetDataSourceFilePath(builder, connectionString);
         }
 
@@ -140,7 +153,7 @@ namespace Elmah
 
         public static string GetConnectionString(IDictionary config, bool resolveDataSource)
         {
-            var connectionString = GetConnectionString(config);
+            string connectionString = GetConnectionString(config);
             return resolveDataSource ? GetResolvedConnectionString(connectionString) : connectionString;
         }
 
@@ -153,7 +166,7 @@ namespace Elmah
         {
             Debug.AssertStringNotEmpty(connectionString);
 
-            var builder = new DbConnectionStringBuilder();
+            DbConnectionStringBuilder builder = new DbConnectionStringBuilder();
             builder["Data Source"] = GetDataSourceFilePath(builder, connectionString);
             return builder.ToString();
         }
@@ -169,7 +182,7 @@ namespace Elmah
             builder.ConnectionString = connectionString;
             if (!builder.ContainsKey("Data Source"))
                 throw new ArgumentException("A 'Data Source' parameter was expected in the supplied connection string, but it was not found.");
-            var dataSource = builder["Data Source"].ToString();
+            string dataSource = builder["Data Source"].ToString();
             return ResolveDataSourceFilePath(dataSource);
         }
 
@@ -200,7 +213,7 @@ namespace Elmah
             // http://blogs.msdn.com/smartclientdata/archive/2005/08/26/456886.aspx
             //
 
-            var baseDirectory = AppDomain.CurrentDomain.GetData("DataDirectory") as string;
+            string baseDirectory = AppDomain.CurrentDomain.GetData("DataDirectory") as string;
             
             //
             // If not, try the current AppDomain's base directory.
@@ -214,9 +227,12 @@ namespace Elmah
             // trailing backslashes into account to avoid duplication.
             //
 
-            return (baseDirectory ?? string.Empty).TrimEnd(_dirSeparators) 
+            return Mask.NullString(baseDirectory).TrimEnd(_dirSeparators) 
                  + Path.DirectorySeparatorChar
                  + path.Substring(dataDirectoryMacroString.Length).TrimStart(_dirSeparators);
         }
+#endif
+
+        private ConnectionStringHelper() {}
     }
 }

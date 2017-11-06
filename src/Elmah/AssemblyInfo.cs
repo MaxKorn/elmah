@@ -27,7 +27,6 @@ using System.Reflection;
 
 using CLSCompliantAttribute = System.CLSCompliantAttribute;
 using ComVisible = System.Runtime.InteropServices.ComVisibleAttribute;
-using InternalsVisibleToAttribute = System.Runtime.CompilerServices.InternalsVisibleToAttribute;
 
 #endregion
 
@@ -35,16 +34,14 @@ using InternalsVisibleToAttribute = System.Runtime.CompilerServices.InternalsVis
 [assembly: AssemblyDescription("Error Logging Modules and Handlers (ELMAH) for ASP.NET")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("ELMAH")]
-[assembly: AssemblyCopyright("Copyright \u00a9 2004, Atif Aziz. All rights reserved.")]
+[assembly: AssemblyCopyright("Copyright (c) 2004, Atif Aziz. All rights reserved.")]
 [assembly: AssemblyCulture("")]
 
-[assembly: AssemblyVersion("2.0.15523.27")]
-[assembly: AssemblyFileVersion("2.0.15523.27")]
+[assembly: AssemblyVersion("1.2.14706.0")]
+[assembly: AssemblyFileVersion("1.2.14706.0955")]
 [assembly: AssemblyConfiguration(Elmah.Build.Configuration)]
 
 [assembly: CLSCompliant(true)] 
 [assembly: ComVisible(false)]
 
-[assembly: Elmah.Scc("$Id: AssemblyInfo.cs 923 2011-12-23 22:02:10Z azizatif $")]
-
-[assembly: InternalsVisibleTo("Elmah.Tests")]
+[assembly: Elmah.Scc("$Id: AssemblyInfo.cs 3a71f9a4eeb5 2012-04-09 20:23:40Z azizatif $")]

@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: ManifestResourceHelper.cs 566 2009-05-11 10:37:10Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ManifestResourceHelper.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -32,28 +32,32 @@ namespace Elmah
 
     #endregion
 
-    public static class ManifestResourceHelper
+    public class ManifestResourceHelper
     {
-        public static void WriteResourceToStream(Stream outputStream, Type type, string resourceName)
+        public static void WriteResourceToStream(Stream outputStream, string resourceName)
         {
-            if (outputStream == null) throw new ArgumentNullException("outputStream");
-            if (resourceName == null) throw new ArgumentNullException("resourceName");
-            if (resourceName.Length == 0) throw new ArgumentException(null, "resourceName");
+            //
+            // Grab the resource stream from the manifest.
+            //
 
-            var thisType = type ?? typeof(ManifestResourceHelper);
-            var thisAssembly = thisType.Assembly;
+            Type thisType = typeof(ManifestResourceHelper);
 
-            using (var inputStream = thisAssembly.GetManifestResourceStream(thisType, resourceName))
+            using (Stream inputStream = thisType.Assembly.GetManifestResourceStream(thisType, resourceName))
             {
-                if (inputStream == null)
-                {
-                    throw new Exception(string.Format(
-                        @"Resource named {0}.{1} not found in assembly {2}.", 
-                        thisType.Namespace, resourceName, thisAssembly));
-                }
 
-                var buffer = new byte[Math.Min(inputStream.Length, 4096)];
-                var readLength = inputStream.Read(buffer, 0, buffer.Length);
+                //
+                // Allocate a buffer for reading the stream. The maximum size
+                // of this buffer is fixed to 4 KB.
+                //
+
+                byte[] buffer = new byte[Math.Min(inputStream.Length, 4096)];
+
+                //
+                // Finally, write out the bytes!
+                //
+
+                int readLength = inputStream.Read(buffer, 0, buffer.Length);
+
                 while (readLength > 0)
                 {
                     outputStream.Write(buffer, 0, readLength);

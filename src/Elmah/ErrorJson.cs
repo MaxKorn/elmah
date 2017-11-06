@@ -21,16 +21,25 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: ErrorJson.cs 607 2009-05-27 23:47:10Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ErrorJson.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
     #region Imports
 
     using System;
+    using System.Collections.Specialized;
     using System.IO;
-    using System.Linq;
+    using System.Threading;
+    using System.Web;
+    using System.Xml;
+
+    using XmlReader = System.Xml.XmlReader;
+    using XmlWriter = System.Xml.XmlWriter;
+    using Thread = System.Threading.Thread;
     using NameValueCollection = System.Collections.Specialized.NameValueCollection;
+    using XmlConvert = System.Xml.XmlConvert;
+    using WriteState = System.Xml.WriteState;
 
     #endregion
 
@@ -39,7 +48,8 @@ namespace Elmah
     /// <see cref="Error"/> objects.
     /// </summary>
 
-    public static class ErrorJson
+    [ Serializable ]
+    public sealed class ErrorJson
     {
         /// <summary>
         /// Encodes the default JSON representation of an <see cref="Error"/> 
@@ -52,9 +62,10 @@ namespace Elmah
 
         public static string EncodeString(Error error)
         {
-            if (error == null) throw new ArgumentNullException("error");
+            if (error == null) 
+                throw new ArgumentNullException("error");
 
-            var writer = new StringWriter();
+            StringWriter writer = new StringWriter();
             Encode(error, writer);
             return writer.ToString();
         }
@@ -70,8 +81,11 @@ namespace Elmah
 
         public static void Encode(Error error, TextWriter writer)
         {
-            if (error == null) throw new ArgumentNullException("error");            
-            if (writer == null) throw new ArgumentNullException("writer");
+            if (error == null) 
+                throw new ArgumentNullException("error");
+            
+            if (writer == null)
+                throw new ArgumentNullException("writer");
 
             EncodeEnclosed(error, new JsonTextWriter(writer));
         }
@@ -82,11 +96,11 @@ namespace Elmah
             Debug.Assert(writer != null);
 
             writer.Object();
-            EncodeMembers(error, writer);
+            Encode(error, writer);
             writer.Pop();
         }
 
-        public static void EncodeMembers(Error error, JsonTextWriter writer)
+        internal static void Encode(Error error, JsonTextWriter writer)
         {
             Debug.Assert(error != null);
             Debug.Assert(writer != null);
@@ -128,7 +142,7 @@ namespace Elmah
             Debug.Assert(writer != null);
             Debug.AssertStringNotEmpty(name);
 
-            if (string.IsNullOrEmpty(value))
+            if (value == null || value.Length == 0)
                 return;
 
             writer.Member(name).String(value);
@@ -152,7 +166,7 @@ namespace Elmah
             // we could simply avoid emitting anything.
             //
 
-            var depth = writer.Depth;
+            int depth = writer.Depth;
 
             //
             // For each key, we get all associated values and loop through
@@ -164,24 +178,25 @@ namespace Elmah
             // multiple strings are naturally wrapped in an array.
             //
 
-            var items = from i in Enumerable.Range(0, collection.Count)
-                        let values = collection.GetValues(i)
-                        where values != null && values.Length > 0
-                        let some = // Neither null nor empty
-                            from v in values
-                            where !string.IsNullOrEmpty(v)
-                            select v
-                        let nom = some.Take(2).Count()
-                        where nom > 0
-                        select new
-                        {
-                            Key = collection.GetKey(i), 
-                            IsArray = nom > 1, 
-                            Values = some,
-                        };
-            
-            foreach (var item in items)
+            foreach (string key in collection.Keys)
             {
+                string[] values = collection.GetValues(key);
+
+                if (values == null || values.Length == 0)
+                    continue;
+
+                int count = 0; // Strings neither null nor empty.
+
+                for (int i = 0; i < values.Length; i++)
+                {
+                    string value = values[i];
+                    if (value != null && value.Length > 0)
+                        count++;
+                }
+
+                if (count == 0) // None?
+                    continue;   // Skip key
+
                 //
                 // There is at least one value so now we emit the key.
                 // Before doing that, we check if the collection member
@@ -194,15 +209,19 @@ namespace Elmah
                     writer.Object();
                 }
 
-                writer.Member(item.Key ?? string.Empty);
+                writer.Member(key);
 
-                if (item.IsArray)
+                if (count > 1)
                     writer.Array(); // Wrap multiples in an array
 
-                foreach (var value in item.Values)
-                    writer.String(value);
+                for (int i = 0; i < values.Length; i++)
+                {
+                    string value = values[i];
+                    if (value != null && value.Length > 0)
+                        writer.String(value);
+                }
 
-                if (item.IsArray) 
+                if (count > 1) 
                     writer.Pop();   // Close multiples array
             }
 
@@ -213,6 +232,11 @@ namespace Elmah
 
             if (writer.Depth > depth)
                 writer.Pop();
+        }
+
+        private ErrorJson()
+        {
+            throw new NotSupportedException();
         }
     }
 }

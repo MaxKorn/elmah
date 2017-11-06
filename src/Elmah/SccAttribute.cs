@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: SccAttribute.cs 640 2009-06-01 17:22:02Z azizatif $")]
+[assembly: Elmah.Scc("$Id: SccAttribute.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -44,7 +44,7 @@ namespace Elmah
 
         public string Id
         {
-            get { return _id ?? string.Empty; }
+            get { return Mask.NullString(_id); }
             set { _id = value; }
         }
 

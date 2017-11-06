@@ -21,17 +21,24 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: ErrorXml.cs 776 2011-01-12 21:09:24Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ErrorXml.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
     #region Imports
 
     using System;
+    using System.Collections.Specialized;
     using System.IO;
+    using System.Web;
     using System.Xml;
-    
+
+    using XmlReader = System.Xml.XmlReader;
+    using XmlWriter = System.Xml.XmlWriter;
+    using Thread = System.Threading.Thread;
     using NameValueCollection = System.Collections.Specialized.NameValueCollection;
+    using XmlConvert = System.Xml.XmlConvert;
+    using WriteState = System.Xml.WriteState;
 
     #endregion
 
@@ -40,8 +47,11 @@ namespace Elmah
     /// an <see cref="Error"/> object.
     /// </summary>
 
-    public static class ErrorXml
+    [ Serializable ]
+    public sealed class ErrorXml
     {
+        private ErrorXml() { throw new NotSupportedException(); }
+
         /// <summary>
         /// Decodes an <see cref="Error"/> object from its default XML 
         /// representation.
@@ -49,9 +59,10 @@ namespace Elmah
 
         public static Error DecodeString(string xml)
         {
-            using (var sr = new StringReader(xml))
-            using (var reader = XmlReader.Create(sr))
+            using (StringReader sr = new StringReader(xml))
             {
+                XmlTextReader reader = new XmlTextReader(sr);
+
                 if (!reader.IsStartElement("error"))
                     throw new ApplicationException("The error XML is not in the expected format.");
 
@@ -65,15 +76,22 @@ namespace Elmah
 
         public static Error Decode(XmlReader reader)
         {
-            if (reader == null) throw new ArgumentNullException("reader");
-            if (!reader.IsStartElement()) throw new ArgumentException("Reader is not positioned at the start of an element.", "reader");
+            if (reader == null)
+                throw new ArgumentNullException("reader");
+
+            //
+            // Reader must be positioned on an element!
+            //
+
+            if (!reader.IsStartElement())
+                throw new ArgumentException("Reader is not positioned at the start of an element.", "reader");
 
             //
             // Read out the attributes that contain the simple
             // typed state.
             //
 
-            var error = new Error();
+            Error error = new Error();
             ReadXmlAttributes(reader, error);
 
             //
@@ -82,7 +100,7 @@ namespace Elmah
             // types like collections.
             //
 
-            var isEmpty = reader.IsEmptyElement;
+            bool isEmpty = reader.IsEmptyElement;
             reader.Read();
 
             if (!isEmpty)
@@ -102,8 +120,11 @@ namespace Elmah
         
         private static void ReadXmlAttributes(XmlReader reader, Error error)
         {
-            if (reader == null) throw new ArgumentNullException("reader");
-            if (!reader.IsStartElement()) throw new ArgumentException("Reader is not positioned at the start of an element.", "reader");
+            if (reader == null)
+                throw new ArgumentNullException("reader");
+
+            if (!reader.IsStartElement())
+                throw new ArgumentException("Reader is not positioned at the start of an element.", "reader");
 
             error.ApplicationName = reader.GetAttribute("application");
             error.HostName = reader.GetAttribute("host");
@@ -112,9 +133,9 @@ namespace Elmah
             error.Source = reader.GetAttribute("source");
             error.Detail = reader.GetAttribute("detail");
             error.User = reader.GetAttribute("user");
-            var timeString = reader.GetAttribute("time") ?? string.Empty;
+            string timeString = Mask.NullString(reader.GetAttribute("time"));
             error.Time = timeString.Length == 0 ? new DateTime() : XmlConvert.ToDateTime(timeString);
-            var statusCodeString = reader.GetAttribute("statusCode") ?? string.Empty;
+            string statusCodeString = Mask.NullString(reader.GetAttribute("statusCode"));
             error.StatusCode = statusCodeString.Length == 0 ? 0 : XmlConvert.ToInt32(statusCodeString);
             error.WebHostHtmlMessage = reader.GetAttribute("webHostHtmlMessage");
         }
@@ -125,7 +146,8 @@ namespace Elmah
 
         private static void ReadInnerXml(XmlReader reader, Error error)
         {
-            if (reader == null) throw new ArgumentNullException("reader");
+            if (reader == null)
+                throw new ArgumentNullException("reader");
 
             //
             // Loop through the elements, reading those that we
@@ -167,20 +189,30 @@ namespace Elmah
 
         public static string EncodeString(Error error)
         {
-            var sw = new StringWriter();
+            StringWriter sw = new StringWriter();
 
-            using (var writer = XmlWriter.Create(sw, new XmlWriterSettings
-            {
-                Indent = true,
-                NewLineOnAttributes = true,
-                CheckCharacters = false,
-                OmitXmlDeclaration = true, // see issue #120: http://code.google.com/p/elmah/issues/detail?id=120
-            }))
+#if !NET_1_0 && !NET_1_1
+            XmlWriterSettings settings = new XmlWriterSettings();
+            settings.Indent = true;
+            settings.NewLineOnAttributes = true;
+            settings.CheckCharacters = false;
+            settings.OmitXmlDeclaration = true;
+            XmlWriter writer = XmlWriter.Create(sw, settings);
+#else
+            XmlTextWriter writer = new XmlTextWriter(sw);
+            writer.Formatting = Formatting.Indented;
+#endif
+
+            try
             {
                 writer.WriteStartElement("error");
                 Encode(error, writer);
                 writer.WriteEndElement();
                 writer.Flush();
+            }
+            finally
+            {
+                writer.Close();
             }
 
             return sw.ToString();
@@ -192,8 +224,11 @@ namespace Elmah
 
         public static void Encode(Error error, XmlWriter writer)
         {
-            if (writer == null) throw new ArgumentNullException("writer");
-            if (writer.WriteState != WriteState.Element) throw new ArgumentException("Writer is not in the expected Element state.", "writer");
+            if (writer == null)
+                throw new ArgumentNullException("writer");
+
+            if (writer.WriteState != WriteState.Element)
+                throw new ArgumentException("Writer is not in the expected Element state.", "writer");
 
             //
             // Write out the basic typed information in attributes
@@ -210,8 +245,8 @@ namespace Elmah
 
         private static void WriteXmlAttributes(Error error, XmlWriter writer)
         {
-            Debug.Assert(error != null);
-            if (writer == null) throw new ArgumentNullException("writer");
+            if (writer == null)
+                throw new ArgumentNullException("writer");
 
             WriteXmlAttribute(writer, "application", error.ApplicationName);
             WriteXmlAttribute(writer, "host", error.HostName);
@@ -233,8 +268,8 @@ namespace Elmah
 
         private static void WriteInnerXml(Error error, XmlWriter writer)
         {
-            Debug.Assert(error != null);
-            if (writer == null) throw new ArgumentNullException("writer");
+            if (writer == null)
+                throw new ArgumentNullException("writer");
 
             WriteCollection(writer, "serverVariables", error.ServerVariables);
             WriteCollection(writer, "queryString", error.QueryString);
@@ -247,12 +282,12 @@ namespace Elmah
             Debug.Assert(writer != null);
             Debug.AssertStringNotEmpty(name);
 
-            if (collection == null || collection.Count == 0) 
-                return;
-
-            writer.WriteStartElement(name);
-            Encode(collection, writer);
-            writer.WriteEndElement();
+            if (collection != null && collection.Count != 0)
+            {
+                writer.WriteStartElement(name);
+                Encode(collection, writer);
+                writer.WriteEndElement();
+            }
         }
 
         private static void WriteXmlAttribute(XmlWriter writer, string name, string value)
@@ -260,7 +295,7 @@ namespace Elmah
             Debug.Assert(writer != null);
             Debug.AssertStringNotEmpty(name);
 
-            if (!string.IsNullOrEmpty(value))
+            if (value != null && value.Length != 0)
                 writer.WriteAttributeString(name, value);
         }
 
@@ -271,11 +306,16 @@ namespace Elmah
 
         private static void Encode(NameValueCollection collection, XmlWriter writer) 
         {
-            if (collection == null) throw new ArgumentNullException("collection");
-            if (writer == null) throw new ArgumentNullException("writer");
+            if (collection == null) 
+                throw new ArgumentNullException("collection");
+            
+            if (writer == null)
+                throw new ArgumentNullException("writer");
 
             if (collection.Count == 0)
+            {
                 return;
+            }
 
             //
             // Write out a named multi-value collection as follows 
@@ -295,11 +335,11 @@ namespace Elmah
                 writer.WriteStartElement("item");
                 writer.WriteAttributeString("name", key);
                 
-                var values = collection.GetValues(key);
+                string[] values = collection.GetValues(key);
 
                 if (values != null)
                 {
-                    foreach (var value in values)
+                    foreach (string value in values)
                     {
                         writer.WriteStartElement("value");
                         writer.WriteAttributeString("string", value);
@@ -318,8 +358,11 @@ namespace Elmah
 
         private static void UpcodeTo(XmlReader reader, NameValueCollection collection)
         {
-            if (reader == null) throw new ArgumentNullException("reader");
-            if (collection == null) throw new ArgumentNullException("collection");
+            if (collection == null)
+                throw new ArgumentNullException("collection");
+
+            if (reader == null)
+                throw new ArgumentNullException("reader");
 
             Debug.Assert(!reader.IsEmptyElement);
             reader.Read();
@@ -333,8 +376,8 @@ namespace Elmah
             {
                 if (reader.IsStartElement("item"))
                 {
-                    var name = reader.GetAttribute("name");
-                    var isNull = reader.IsEmptyElement;
+                    string name = reader.GetAttribute("name");
+                    bool isNull = reader.IsEmptyElement;
 
                     reader.Read(); // <item>
 
@@ -344,7 +387,7 @@ namespace Elmah
                         {
                             if (reader.IsStartElement("value")) // <value ...>
                             {
-                                var value = reader.GetAttribute("string");
+                                string value = reader.GetAttribute("string");
                                 collection.Add(name, value);
                                 if (reader.IsEmptyElement)
                                 {

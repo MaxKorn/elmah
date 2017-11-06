@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: Error.cs 923 2011-12-23 22:02:10Z azizatif $")]
+[assembly: Elmah.Scc("$Id: Error.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -29,11 +29,11 @@ namespace Elmah
 
     using System;
     using System.Diagnostics;
+    using System.Globalization;
     using System.Security;
     using System.Security.Principal;
     using System.Web;
     using System.Xml;
-    using Mannex;
     using Thread = System.Threading.Thread;
     using NameValueCollection = System.Collections.Specialized.NameValueCollection;
 
@@ -84,34 +84,24 @@ namespace Elmah
         /// context during the exception.
         /// </summary>
 
-        public Error(Exception e, HttpContextBase context)
+        public Error(Exception e, HttpContext context)
         {
             if (e == null)
                 throw new ArgumentNullException("e");
 
             _exception = e;
-            var baseException = e.GetBaseException();
+            Exception baseException = e.GetBaseException();
 
             //
             // Load the basic information.
             //
 
-            try
-            {
-                _hostName = Environment.MachineName;
-            }
-            catch (SecurityException)
-            {
-                // A SecurityException may occur in certain, possibly 
-                // user-modified, Medium trust environments.
-                _hostName = string.Empty;
-            }
-
+            _hostName = Environment.TryGetMachineName(context);
             _typeName = baseException.GetType().FullName;
             _message = baseException.Message;
             _source = baseException.Source;
             _detail = e.ToString();
-            _user = Thread.CurrentPrincipal.Identity.Name ?? string.Empty;
+            _user = Mask.NullString(Thread.CurrentPrincipal.Identity.Name);
             _time = DateTime.Now;
 
             //
@@ -119,12 +109,12 @@ namespace Elmah
             // and detailed HTML message provided by the host.
             //
 
-            var httpException = e as HttpException;
+            HttpException httpException = e as HttpException;
 
             if (httpException != null)
             {
                 _statusCode = httpException.GetHttpCode();
-                _webHostHtmlMessage = TryGetHtmlErrorMessage(httpException) ?? string.Empty;
+                _webHostHtmlMessage = TryGetHtmlErrorMessage(httpException);
             }
 
             //
@@ -135,33 +125,31 @@ namespace Elmah
 
             if (context != null)
             {
-                var webUser = context.User;
-                if (webUser != null 
-                    && (webUser.Identity.Name ?? string.Empty).Length > 0)
+                IPrincipal webUser = context.User;
+                if (webUser != null
+                    && Mask.NullString(webUser.Identity.Name).Length > 0)
                 {
                     _user = webUser.Identity.Name;
                 }
 
-                var request = context.Request;
-                var qsfc = request.TryGetUnvalidatedCollections((form, qs, cookies) => new
-                {
-                    QueryString = qs,
-                    Form = form, 
-                    Cookies = cookies,
-                });
+                HttpRequest request = context.Request;
 
                 _serverVariables = CopyCollection(request.ServerVariables);
-                _queryString = CopyCollection(qsfc.QueryString);
-                _form = CopyCollection(qsfc.Form);
-                _cookies = CopyCollection(qsfc.Cookies);
-            }
 
-            var callerInfo = e.TryGetCallerInfo() ?? CallerInfo.Empty;
-            if (!callerInfo.IsEmpty)
-            {
-                _detail = "# caller: " + callerInfo
-                        + System.Environment.NewLine
-                        + _detail;
+                if (_serverVariables != null)
+                {
+                    // Hack for issue #140:
+                    // http://code.google.com/p/elmah/issues/detail?id=140
+ 
+                    const string authPasswordKey = "AUTH_PASSWORD";
+                    string authPassword = _serverVariables[authPasswordKey];
+                    if (authPassword != null) // yes, mask empty too!
+                        _serverVariables[authPasswordKey] = "*****";
+                }
+
+                _queryString = CopyCollection(request.QueryString);
+                _form = CopyCollection(request.Form);
+                _cookies = CopyCollection(request.Cookies);
             }
         }
 
@@ -209,7 +197,7 @@ namespace Elmah
 
         public string ApplicationName
         { 
-            get { return _applicationName ?? string.Empty; }
+            get { return Mask.NullString(_applicationName); }
             set { _applicationName = value; }
         }
 
@@ -219,7 +207,7 @@ namespace Elmah
         
         public string HostName
         { 
-            get { return _hostName ?? string.Empty; }
+            get { return Mask.NullString(_hostName); }
             set { _hostName = value; }
         }
 
@@ -229,7 +217,7 @@ namespace Elmah
         
         public string Type
         { 
-            get { return _typeName ?? string.Empty; }
+            get { return Mask.NullString(_typeName); }
             set { _typeName = value; }
         }
 
@@ -239,7 +227,7 @@ namespace Elmah
         
         public string Source
         { 
-            get { return _source ?? string.Empty; }
+            get { return Mask.NullString(_source); }
             set { _source = value; }
         }
 
@@ -249,7 +237,7 @@ namespace Elmah
         
         public string Message 
         { 
-            get { return _message ?? string.Empty; }
+            get { return Mask.NullString(_message); }
             set { _message = value; }
         }
 
@@ -260,7 +248,7 @@ namespace Elmah
 
         public string Detail
         { 
-            get { return _detail ?? string.Empty; }
+            get { return Mask.NullString(_detail); }
             set { _detail = value; }
         }
 
@@ -271,7 +259,7 @@ namespace Elmah
         
         public string User 
         { 
-            get { return _user ?? string.Empty; }
+            get { return Mask.NullString(_user); }
             set { _user = value; }
         }
 
@@ -308,7 +296,7 @@ namespace Elmah
         
         public string WebHostHtmlMessage
         {
-            get { return _webHostHtmlMessage ?? string.Empty; }
+            get { return Mask.NullString(_webHostHtmlMessage); }
             set { _webHostHtmlMessage = value; }
         }
 
@@ -371,7 +359,7 @@ namespace Elmah
             // Make a base shallow copy of all the members.
             //
 
-            var copy = (Error) MemberwiseClone();
+            Error copy = (Error) MemberwiseClone();
 
             //
             // Now make a deep copy of items that are mutable.
@@ -398,11 +386,11 @@ namespace Elmah
             if (cookies == null || cookies.Count == 0)
                 return null;
 
-            var copy = new NameValueCollection(cookies.Count);
+            NameValueCollection copy = new NameValueCollection(cookies.Count);
 
-            for (var i = 0; i < cookies.Count; i++)
+            for (int i = 0; i < cookies.Count; i++)
             {
-                var cookie = cookies[i];
+                HttpCookie cookie = cookies[i];
 
                 //
                 // NOTE: We drop the Path and Domain properties of the 

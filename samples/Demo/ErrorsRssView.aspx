@@ -71,6 +71,6 @@
     <asp:XmlDataSource ID="ErrorLogRssDataSource" runat="server" EnableCaching="false"
         DataFile='<%# Request.Url.GetLeftPart(UriPartial.Authority) + VirtualPathUtility.ToAbsolute(ErrorLogRssUrl) %>'
         XPath="rss/channel/item" />
-    <!-- $Id: ErrorsRssView.aspx 572 2009-05-11 14:48:43Z azizatif $ -->
+    <!-- $Id: ErrorsRssView.aspx addb64b2f0fa 2012-03-07 18:50:16Z azizatif $ -->
 </body>
 </html>

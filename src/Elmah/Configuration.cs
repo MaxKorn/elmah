@@ -21,20 +21,33 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: Configuration.cs 607 2009-05-27 23:47:10Z azizatif $")]
+[assembly: Elmah.Scc("$Id: Configuration.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
     #region Imports
 
+    using System.Collections.Specialized;
     using System.Configuration;
 
     #endregion
 
-    internal static class Configuration
+    internal sealed class Configuration
     {
         internal const string GroupName = "elmah";
         internal const string GroupSlash = GroupName + "/";
+
+        public static NameValueCollection AppSettings
+        {
+            get
+            {
+#if NET_1_0 || NET_1_1
+                return ConfigurationSettings.AppSettings;
+#else
+                return ConfigurationManager.AppSettings;
+#endif
+            }
+        }
 
         public static object GetSubsection(string name)
         {
@@ -43,7 +56,13 @@ namespace Elmah
 
         public static object GetSection(string name)
         {
+#if NET_1_0 || NET_1_1
+            return ConfigurationSettings.GetConfig(name);
+#else
             return ConfigurationManager.GetSection(name);
+#endif
         }
+
+        private Configuration() { }
     }
 }

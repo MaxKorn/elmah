@@ -21,19 +21,18 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: SccStamp.cs 618 2009-05-30 00:18:30Z azizatif $")]
+[assembly: Elmah.Scc("$Id: SccStamp.cs 149c8adb2e53 2012-03-21 22:27:02Z azizatif $")]
 
 namespace Elmah
 {
     #region Imports
 
     using System;
+    using System.Collections;
     using System.Globalization;
     using System.IO;
     using System.Reflection;
     using System.Text.RegularExpressions;
-    using System.Collections.Generic;
-    using Mannex;
 
     #endregion
 
@@ -47,7 +46,7 @@ namespace Elmah
         private readonly string _id;
         private readonly string _author;
         private readonly string _fileName;
-        private readonly int _revision;
+        private readonly string _revision;
         private readonly DateTime _lastChanged;
         private static readonly Regex _regex;
 
@@ -56,17 +55,23 @@ namespace Elmah
             //
             // Expression to help parse:
             //
-            // STAMP := "$Id:" FILENAME REVISION DATE TIME "Z" USERNAME "$"
+            // STAMP := "$Id: SccStamp.cs 149c8adb2e53 2012-03-21 22:27:02Z azizatif $"
             // DATE  := 4-DIGIT-YEAR "-" 2-DIGIT-MONTH "-" 2-DIGIT-DAY
             // TIME  := HH ":" MM ":" SS
             //
 
-            var escapedNonFileNameChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
+            string escapedNonFileNameChars = Regex.Escape(new string(
+            #if NET_1_0 || NET_1_1
+                Path.InvalidPathChars
+            #else
+                Path.GetInvalidFileNameChars() // obsoletes InvalidPathChars .NET 2.0 onwards
+            #endif
+            ));
 
             _regex = new Regex(
                 @"\$ id: \s* 
                      (?<f>[^" + escapedNonFileNameChars + @"]+) \s+         # FILENAME
-                     (?<r>[0-9]+) \s+                                       # REVISION
+                     (?<r>[0-9a-f]+) \s+                                    # REVISION
                      ((?<y>[0-9]{4})-(?<mo>[0-9]{2})-(?<d>[0-9]{2})) \s+    # DATE
                      ((?<h>[0-9]{2})\:(?<mi>[0-9]{2})\:(?<s>[0-9]{2})Z) \s+ # TIME (UTC)
                      (?<a>\w+)                                              # AUTHOR",
@@ -92,25 +97,25 @@ namespace Elmah
             if (id.Length == 0)
                 throw new ArgumentException(null, "id");
             
-            var match = _regex.Match(id);
+            Match match = _regex.Match(id);
             
             if (!match.Success)
                 throw new ArgumentException(null, "id");
 
             _id = id;
 
-            var groups = match.Groups;
+            GroupCollection groups = match.Groups;
 
             _fileName = groups["f"].Value;
-            _revision = int.Parse(groups["r"].Value);
+            _revision = groups["r"].Value;
             _author = groups["a"].Value;
 
-            var year = int.Parse(groups["y"].Value);
-            var month = int.Parse(groups["mo"].Value);
-            var day = int.Parse(groups["d"].Value);
-            var hour = int.Parse(groups["h"].Value);
-            var minute = int.Parse(groups["mi"].Value);
-            var second = int.Parse(groups["s"].Value);
+            int year = int.Parse(groups["y"].Value);
+            int month = int.Parse(groups["mo"].Value);
+            int day = int.Parse(groups["d"].Value);
+            int hour = int.Parse(groups["h"].Value);
+            int minute = int.Parse(groups["mi"].Value);
+            int second = int.Parse(groups["s"].Value);
             
             _lastChanged = new DateTime(year, month, day, hour, minute, second).ToLocalTime();
         }
@@ -143,10 +148,10 @@ namespace Elmah
         }
 
         /// <summary>
-        /// Gets the revision number component of the SCC stamp ID.
+        /// Gets the revision component of the SCC stamp ID.
         /// </summary>
 
-        public int Revision
+        public object Revision
         {
             get { return _revision; }
         }
@@ -186,22 +191,22 @@ namespace Elmah
             if (assembly == null)
                 throw new ArgumentNullException("assembly");
 
-            var attributes = (SccAttribute[]) Attribute.GetCustomAttributes(assembly, typeof(SccAttribute), false);
+            SccAttribute[] attributes = (SccAttribute[]) Attribute.GetCustomAttributes(assembly, typeof(SccAttribute), false);
             
             if (attributes.Length == 0)
                 return new SccStamp[0];
             
-            var list = new List<SccStamp>(attributes.Length);
+            ArrayList list = new ArrayList(attributes.Length);
 
-            foreach (var attribute in attributes)
+            foreach (SccAttribute attribute in attributes)
             {
-                var id = attribute.Id.Trim();
+                string id = attribute.Id.Trim();
 
                 if (id.Length > 0 && string.Compare("$Id" + /* IMPORTANT! */ "$", id, true, CultureInfo.InvariantCulture) != 0)
                     list.Add(new SccStamp(id));
             }
 
-            return list.ToArray();
+            return (SccStamp[]) list.ToArray(typeof(SccStamp));
         }
 
         /// <summary>
@@ -228,8 +233,8 @@ namespace Elmah
             if (stamps.Length == 0)
                 return null;
             
-            stamps = stamps.CloneObject();
-            SortByRevision(stamps, /* descending */ true);
+            stamps = (SccStamp[]) stamps.Clone();
+            SortByLastChanged(stamps, /* descending */ true);
             return stamps[0];
         }
 
@@ -238,9 +243,9 @@ namespace Elmah
         /// revision numbers in ascending order.
         /// </summary>
 
-        public static void SortByRevision(SccStamp[] stamps)
+        public static void SortByLastChanged(SccStamp[] stamps)
         {
-            SortByRevision(stamps, false);
+            SortByLastChanged(stamps, false);
         }
 
         /// <summary>
@@ -248,13 +253,42 @@ namespace Elmah
         /// revision numbers in ascending or descending order.
         /// </summary>
 
-        public static void SortByRevision(SccStamp[] stamps, bool descending)
+        public static void SortByLastChanged(SccStamp[] stamps, bool descending)
         {
-            Comparison<SccStamp> comparer = (lhs, rhs) => lhs.Revision.CompareTo(rhs.Revision);
+            IComparer comparer = new LastChangedComparer();
+            
+            if (descending)
+                comparer = new ReverseComparer(comparer);
+            
+            Array.Sort(stamps, comparer);
+        }
 
-            Array.Sort(stamps, descending 
-                               ? ((lhs, rhs) => -comparer(lhs, rhs)) 
-                               : comparer);
+        private sealed class LastChangedComparer : IComparer
+        {
+            public int Compare(object x, object y)
+            {
+                if (x == null && y == null)
+                    return 0;
+                
+                if (x == null)
+                    return -1;
+                
+                if (y == null)
+                    return 1;
+
+                if (x.GetType() != y.GetType())
+                    throw new ArgumentException("Objects cannot be compared because their types do not match.");
+                
+                return Compare((SccStamp) x, (SccStamp) y);
+            }
+
+            private static int Compare(SccStamp lhs, SccStamp rhs)
+            {
+                Debug.Assert(lhs != null);
+                Debug.Assert(rhs != null);
+
+                return lhs.LastChanged.CompareTo(rhs.LastChanged);
+            }
         }
     }
 }

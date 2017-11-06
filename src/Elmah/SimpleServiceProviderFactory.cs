@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: SimpleServiceProviderFactory.cs 641 2009-06-01 17:38:40Z azizatif $")]
+[assembly: Elmah.Scc("$Id: SimpleServiceProviderFactory.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -38,7 +38,7 @@ namespace Elmah
     /// section of the configuration file.
     /// </summary>
     
-    internal static class SimpleServiceProviderFactory
+    internal sealed class SimpleServiceProviderFactory
     {
         public static object CreateFromConfigSection(string sectionName)
         {
@@ -48,7 +48,7 @@ namespace Elmah
             // Get the configuration section with the settings.
             //
             
-            var config = (IDictionary) Configuration.GetSection(sectionName);
+            IDictionary config = (IDictionary) Configuration.GetSection(sectionName);
 
             if (config == null)
                 return null;
@@ -64,7 +64,7 @@ namespace Elmah
             // Get the type specification of the service provider.
             //
 
-            var typeSpec = config.Find("type", string.Empty);
+            string typeSpec = Mask.NullString((string) config["type"]);
             
             if (typeSpec.Length == 0)
                 return null;
@@ -75,8 +75,10 @@ namespace Elmah
             // Locate, create and return the service provider object.
             //
 
-            var type = TypeResolution.GetType(typeSpec);
+            Type type = Type.GetType(typeSpec, true);
             return Activator.CreateInstance(type, new object[] { config });
         }
+
+        private SimpleServiceProviderFactory() {}
     }
 }

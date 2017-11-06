@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: ServiceContainer.cs 776 2011-01-12 21:09:24Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ServiceContainer.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -34,22 +34,19 @@ namespace Elmah
 
     internal sealed class ServiceContainer : IServiceProvider
     {
-        private readonly HttpContextBase _context;
+        private readonly object _context;
 
         public ServiceContainer(object context)
         {
             // NOTE: context is allowed to be null
 
-            var httpContext = context as HttpContext;
-            _context = httpContext != null 
-                     ? new HttpContextWrapper(httpContext) 
-                     : context as HttpContextBase;
+            _context = context;
         }
 
         public object GetService(Type serviceType)
         {
             return serviceType == typeof(ErrorLog) 
-                 ? ErrorLog.GetDefaultImpl(_context) 
+                 ? ErrorLog.GetDefaultImpl(_context as HttpContext) 
                  : null;
         }
     }

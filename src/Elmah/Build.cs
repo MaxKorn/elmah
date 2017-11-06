@@ -21,12 +21,14 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: Build.cs 776 2011-01-12 21:09:24Z azizatif $")]
+[assembly: Elmah.Scc("$Id: Build.cs 3a71f9a4eeb5 2012-04-09 20:23:40Z azizatif $")]
 
 namespace Elmah
 {
-    internal static class Build
+    internal sealed class Build
     {
+        private Build() { }
+
 #if DEBUG
         public const bool IsDebug = true;
         public const bool IsRelease = !IsDebug;
@@ -41,14 +43,16 @@ namespace Elmah
         public const string TypeLowercase = "release";
 #endif
 
-#if NET_2_0
+#if NET_1_0
+        public const string Framework = "net-1.0";
+#elif NET_1_1
+        public const string Framework = "net-1.1";
+#elif NET_2_0
         public const string Framework = "net-2.0";
 #elif NET_3_5
         public const string Framework = "net-3.5";
 #elif NET_4_0
         public const string Framework = "net-4.0";
-#elif NET_4_5
-        public const string Framework = "net-4.5";
 #else
         public const string Framework = "unknown";
 #endif
@@ -63,7 +67,20 @@ namespace Elmah
 
         public static string ImageRuntimeVersion
         {
-            get { return typeof(ErrorLog).Assembly.ImageRuntimeVersion; }
+            get
+            {
+#if NET_1_0
+                //
+                // As Assembly.ImageRuntimeVersion property was not available
+                // under .NET Framework 1.0, we just return the version 
+                // hard-coded based on conditional compilation symbol.
+                //
+
+                return "v1.0.3705";
+#else
+                return typeof(ErrorLog).Assembly.ImageRuntimeVersion;
+#endif
+            }
         }
 
         /// <summary>
@@ -71,6 +88,6 @@ namespace Elmah
         /// M1, M2, ..., Mn, BETA1, BETA2, RC1, RC2, RTM.
         /// </summary>
 
-        public const string Status = "Preview";
+        public const string Status = "RTM";
     }
 }

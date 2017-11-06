@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: Debug.cs 607 2009-05-27 23:47:10Z azizatif $")]
+[assembly: Elmah.Scc("$Id: Debug.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -38,20 +38,22 @@ namespace Elmah
     /// applicable during development.
     /// </summary>
     
-    internal static class Debug
+    internal sealed class Debug
     {
-        [ Conditional("DEBUG"), DebuggerStepThrough ]
+        [ Conditional("DEBUG") ]
         [ AssertionMethod ]
         public static void Assert([AssertionCondition(AssertionConditionType.IS_TRUE)] bool condition)
         {
             SysDebug.Assert(condition);
         }
 
-        [ Conditional("DEBUG"), DebuggerStepThrough ]
+        [ Conditional("DEBUG") ]
         public static void AssertStringNotEmpty(string s)
         {
             Assert(s != null);
             Assert(s.Length != 0);
         }
+        
+        private Debug() {}
     }
 }

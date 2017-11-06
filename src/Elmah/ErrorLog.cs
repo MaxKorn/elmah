@@ -21,11 +21,7 @@
 //
 #endregion
 
-#if !NET_3_5
-#define ASYNC
-#endif
-
-[assembly: Elmah.Scc("$Id: ErrorLog.cs 776 2011-01-12 21:09:24Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ErrorLog.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -33,13 +29,7 @@ namespace Elmah
     
     using System;
     using System.Web;
-    using System.Collections.Generic;
-
-    #if ASYNC
-    using System.Threading;
-    using System.Threading.Tasks;
-    using Mannex.Threading.Tasks;
-    #endif
+    using IList = System.Collections.IList;
 
     #endregion
 
@@ -60,31 +50,6 @@ namespace Elmah
         
         public abstract string Log(Error error);
 
-        #if ASYNC
-
-        /// <summary>
-        /// When overridden in a subclass, starts a task that asynchronously
-        /// does the same as <see cref="Log"/>.
-        /// </summary>
-
-        public Task<string> LogAsync(Error error)
-        {
-            return LogAsync(error, CancellationToken.None);
-        }
-
-        /// <summary>
-        /// When overridden in a subclass, starts a task that asynchronously
-        /// does the same as <see cref="Log"/>. An additional parameter
-        /// specifies a <see cref="CancellationToken"/> to use.
-        /// </summary>
-
-        public virtual Task<string> LogAsync(Error error, CancellationToken cancellationToken)
-        {
-            return Async.RunSynchronously(Log, error);
-        }
-        
-        #endif
-
         /// <summary>
         /// When overridden in a subclass, begins an asynchronous version 
         /// of <see cref="Log"/>.
@@ -92,11 +57,7 @@ namespace Elmah
 
         public virtual IAsyncResult BeginLog(Error error, AsyncCallback asyncCallback, object asyncState)
         {
-            #if ASYNC
-            return LogAsync(error, CancellationToken.None).Apmize(asyncCallback, asyncState);
-            #else
-            return Apm.BeginSync(asyncCallback, asyncState, this, "Log", () => Log(error));
-            #endif
+            return BeginSyncImpl(asyncCallback, asyncState, new LogHandler(Log), error);
         }
 
         /// <summary>
@@ -106,12 +67,10 @@ namespace Elmah
 
         public virtual string EndLog(IAsyncResult asyncResult)
         {
-            #if ASYNC
-            return EndApmizedTask<string>(asyncResult);
-            #else
-            return AsyncResult<string>.End(asyncResult, this, "Log");
-            #endif
+            return (string) EndSyncImpl(asyncResult);
         }
+
+        private delegate string LogHandler(Error error);
 
         /// <summary>
         /// Retrieves a single application error from log given its 
@@ -120,31 +79,6 @@ namespace Elmah
 
         public abstract ErrorLogEntry GetError(string id);
 
-        #if ASYNC
-
-        /// <summary>
-        /// When overridden in a subclass, starts a task that asynchronously
-        /// does the same as <see cref="GetError"/>.
-        /// </summary>
-
-        public Task<ErrorLogEntry> GetErrorAsync(string id)
-        {
-            return GetErrorAsync(id, CancellationToken.None);
-        }
-
-        /// <summary>
-        /// When overridden in a subclass, starts a task that asynchronously
-        /// does the same as <see cref="GetError"/>. An additional parameter
-        /// specifies a <see cref="CancellationToken"/> to use.
-        /// </summary>
-
-        public virtual Task<ErrorLogEntry> GetErrorAsync(string id, CancellationToken cancellationToken)
-        {
-            return Async.RunSynchronously(GetError, id);
-        }
-
-        #endif
-
         /// <summary>
         /// When overridden in a subclass, begins an asynchronous version 
         /// of <see cref="GetError"/>.
@@ -152,11 +86,7 @@ namespace Elmah
 
         public virtual IAsyncResult BeginGetError(string id, AsyncCallback asyncCallback, object asyncState)
         {
-            #if ASYNC
-            return GetErrorAsync(id, CancellationToken.None).Apmize(asyncCallback, asyncState);
-            #else
-            return Apm.BeginSync(asyncCallback, asyncState, this, "GetError", () => GetError(id));
-            #endif
+            return BeginSyncImpl(asyncCallback, asyncState, new GetErrorHandler(GetError), id);
         }
 
         /// <summary>
@@ -166,57 +96,26 @@ namespace Elmah
 
         public virtual ErrorLogEntry EndGetError(IAsyncResult asyncResult)
         {
-            #if ASYNC
-            return EndApmizedTask<ErrorLogEntry>(asyncResult);
-            #else
-            return AsyncResult<ErrorLogEntry>.End(asyncResult, this, "GetError");
-            #endif
+            return (ErrorLogEntry) EndSyncImpl(asyncResult);
         }
+
+        private delegate ErrorLogEntry GetErrorHandler(string id);
 
         /// <summary>
         /// Retrieves a page of application errors from the log in 
         /// descending order of logged time.
         /// </summary>
-
-        public abstract int GetErrors(int pageIndex, int pageSize, ICollection<ErrorLogEntry> errorEntryList);
-
-        #if ASYNC
-
-        /// <summary>
-        /// When overridden in a subclass, starts a task that asynchronously
-        /// does the same as <see cref="GetErrors"/>. An additional 
-        /// parameter specifies a <see cref="CancellationToken"/> to use.
-        /// </summary>
-
-        public Task<int> GetErrorsAsync(int pageIndex, int pageSize, ICollection<ErrorLogEntry> errorEntryList)
-        {
-            return GetErrorsAsync(pageIndex, pageSize, errorEntryList, CancellationToken.None);
-        }
-
-        /// <summary>
-        /// When overridden in a subclass, starts a task that asynchronously
-        /// does the same as <see cref="GetErrors"/>.
-        /// </summary>
-
-        public virtual Task<int> GetErrorsAsync(int pageIndex, int pageSize, ICollection<ErrorLogEntry> errorEntryList, CancellationToken cancellationToken)
-        {
-            return Async.RunSynchronously(GetErrors, pageIndex, pageSize, errorEntryList);
-        }
-
-        #endif
+        
+        public abstract int GetErrors(int pageIndex, int pageSize, IList errorEntryList);
 
         /// <summary>
         /// When overridden in a subclass, begins an asynchronous version 
         /// of <see cref="GetErrors"/>.
         /// </summary>
 
-        public virtual IAsyncResult BeginGetErrors(int pageIndex, int pageSize, ICollection<ErrorLogEntry> errorEntryList, AsyncCallback asyncCallback, object asyncState)
+        public virtual IAsyncResult BeginGetErrors(int pageIndex, int pageSize, IList errorEntryList, AsyncCallback asyncCallback, object asyncState)
         {
-            #if ASYNC
-            return GetErrorsAsync(pageIndex, pageSize, errorEntryList, CancellationToken.None).Apmize(asyncCallback, asyncState);
-            #else
-            return Apm.BeginSync(asyncCallback, asyncState, this, "GetErrors", () => GetErrors(pageIndex, pageSize, errorEntryList));
-            #endif
+            return BeginSyncImpl(asyncCallback, asyncState, new GetErrorsHandler(GetErrors), pageIndex, pageSize, errorEntryList);
         }
 
         /// <summary>
@@ -226,12 +125,10 @@ namespace Elmah
         
         public virtual int EndGetErrors(IAsyncResult asyncResult)
         {
-            #if ASYNC
-            return EndApmizedTask<int>(asyncResult);
-            #else
-            return AsyncResult<int>.End(asyncResult, this, "GetErrors");
-            #endif
+            return (int) EndSyncImpl(asyncResult);
         }
+
+        private delegate int GetErrorsHandler(int pageIndex, int pageSize, IList errorEntryList);
 
         /// <summary>
         /// Get the name of this log.
@@ -239,7 +136,7 @@ namespace Elmah
 
         public virtual string Name
         {
-            get { return GetType().Name; }   
+            get { return this.GetType().Name; }   
         }
 
         /// <summary>
@@ -248,7 +145,7 @@ namespace Elmah
         
         public string ApplicationName
         {
-            get { return _appName ?? string.Empty; }
+            get { return Mask.NullString(_appName); }
             
             set
             {
@@ -256,7 +153,7 @@ namespace Elmah
                     throw new InvalidOperationException("The application name cannot be reset once initialized.");
 
                 _appName = value;
-                _appNameInitialized = (value ?? string.Empty).Length > 0;
+                _appNameInitialized = Mask.NullString(value).Length > 0;
             }
         }
 
@@ -266,12 +163,24 @@ namespace Elmah
         /// none is configured.
         /// </summary>
 
-        public static ErrorLog GetDefault(HttpContextBase context)
+        [ Obsolete("Use ErrorLog.GetDefault(context) instead.") ]
+        public static ErrorLog Default
+        {
+            get { return GetDefault(HttpContext.Current); }
+        }
+
+        /// <summary>
+        /// Gets the default error log implementation specified in the 
+        /// configuration file, or the in-memory log implemention if
+        /// none is configured.
+        /// </summary>
+
+        public static ErrorLog GetDefault(HttpContext context)
         {
             return (ErrorLog) ServiceCenter.GetService(context, typeof(ErrorLog));
         }
 
-        internal static ErrorLog GetDefaultImpl(HttpContextBase context)
+        internal static ErrorLog GetDefaultImpl(HttpContext context)
         {
             ErrorLog log;
 
@@ -287,13 +196,17 @@ namespace Elmah
             // Determine the default store type from the configuration and 
             // create an instance of it.
             //
+
+            log = (ErrorLog) SimpleServiceProviderFactory.CreateFromConfigSection(Configuration.GroupSlash + "errorLog");
+
+            //
             // If no object got created (probably because the right 
             // configuration settings are missing) then default to 
             // the in-memory log implementation.
             //
 
-            log = (ErrorLog) SimpleServiceProviderFactory.CreateFromConfigSection(Configuration.GroupSlash + "errorLog") 
-                  ?? new MemoryErrorLog();
+            if (log == null)
+                log = new MemoryErrorLog();
 
             if (context != null)
             {
@@ -316,10 +229,13 @@ namespace Elmah
             return log;
         }
 
-        private static string InferApplicationName(HttpContextBase context)
+        private static string InferApplicationName(HttpContext context)
         {
             Debug.Assert(context != null);
 
+#if NET_1_1 || NET_1_0
+            return HttpRuntime.AppDomainAppId;
+#else
             //
             // Setup the application name (ASP.NET 2.0 or later).
             //
@@ -354,25 +270,61 @@ namespace Elmah
             }
 
             return Mask.EmptyString(appName, "/");
+#endif
         }
 
-        #if ASYNC
+        //
+        // The following two methods are helpers that provide boilerplate 
+        // implementations for implementing asnychronous BeginXXXX and 
+        // EndXXXX methods over a default synchronous implementation.
+        //
 
-        static T EndApmizedTask<T>(IAsyncResult asyncResult)
+        private static IAsyncResult BeginSyncImpl(AsyncCallback asyncCallback, object asyncState, Delegate syncImpl, params object[] args)
         {
-            if (asyncResult == null) throw new ArgumentNullException("asyncResult");
-            var task = asyncResult as Task<T>;
-            if (task == null) throw new ArgumentException(null, "asyncResult");
+            Debug.Assert(syncImpl != null);
+
+            SynchronousAsyncResult asyncResult;
+            string syncMethodName = syncImpl.Method.Name;
+
             try
             {
-                return task.Result;
+                asyncResult = SynchronousAsyncResult.OnSuccess(syncMethodName, asyncState, 
+                    syncImpl.DynamicInvoke(args));
             }
-            catch (AggregateException e)
+            catch (Exception e)
             {
-                throw e.InnerException; // TODO handle stack trace reset?
+                asyncResult = SynchronousAsyncResult.OnFailure(syncMethodName, asyncState, e);
             }
+
+            if (asyncCallback != null)
+                asyncCallback(asyncResult);
+
+            return asyncResult;
         }
 
-        #endif
+        private static object EndSyncImpl(IAsyncResult asyncResult)
+        {
+            if (asyncResult == null)
+                throw new ArgumentNullException("asyncResult");
+
+            SynchronousAsyncResult syncResult = asyncResult as SynchronousAsyncResult;
+
+            if (syncResult == null)
+                throw new ArgumentException("IAsyncResult object did not come from the corresponding async method on this type.", "asyncResult");
+
+            //
+            // IMPORTANT! The End method on SynchronousAsyncResult will 
+            // throw an exception if that's what Log did when 
+            // BeginLog called it. The unforunate side effect of this is
+            // the stack trace information for the exception is lost and 
+            // reset to this point. There seems to be a basic failure in the 
+            // framework to accommodate for this case more generally. One 
+            // could handle this through a custom exception that wraps the 
+            // original exception, but this assumes that an invocation will 
+            // only throw an exception of that custom type.
+            //
+
+            return syncResult.End();
+        }
     }
 }

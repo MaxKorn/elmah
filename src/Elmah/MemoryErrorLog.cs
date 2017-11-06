@@ -21,17 +21,18 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: MemoryErrorLog.cs 776 2011-01-12 21:09:24Z azizatif $")]
+[assembly: Elmah.Scc("$Id: MemoryErrorLog.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
     #region Imports
 
     using System;
-    using System.Collections.Generic;
-    using System.Collections.ObjectModel;
-    using System.Threading;
-    using Mannex;
+
+    using ReaderWriterLock = System.Threading.ReaderWriterLock;
+    using Timeout = System.Threading.Timeout;
+    using NameObjectCollectionBase = System.Collections.Specialized.NameObjectCollectionBase;
+    using IList = System.Collections.IList;
     using IDictionary = System.Collections.IDictionary;
     using CultureInfo = System.Globalization.CultureInfo;
 
@@ -54,7 +55,7 @@ namespace Elmah
         //
 
         private static EntryCollection _entries;
-        private readonly static ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
+        private readonly static ReaderWriterLock _lock = new ReaderWriterLock();
 
         //
         // IMPORTANT! The size must be the same for all instances
@@ -110,7 +111,7 @@ namespace Elmah
             }
             else
             {
-                var sizeString = config.Find("size", string.Empty);
+                string sizeString = Mask.NullString((string) config["size"]);
 
                 if (sizeString.Length == 0)
                 {
@@ -121,15 +122,6 @@ namespace Elmah
                     _size = Convert.ToInt32(sizeString, CultureInfo.InvariantCulture);
                     _size = Math.Max(0, Math.Min(MaximumSize, _size));
                 }
-
-                //
-                // Set the application name. This implementation does not
-                // and cannot provide per-app isolation.
-                // Fixes: https://code.google.com/p/elmah/issues/detail?id=291
-                //
-
-                var appName = config.Find("applicationName", string.Empty);
-                ApplicationName = appName;
             }
         }
 
@@ -159,21 +151,23 @@ namespace Elmah
             // Assign a new GUID and create an entry for the error.
             //
 
-            error = error.CloneObject();
-            error.ApplicationName = ApplicationName;
-            var newId = Guid.NewGuid();
-            var entry = new ErrorLogEntry(this, newId.ToString(), error);
+            error = (Error) ((ICloneable) error).Clone();
+            error.ApplicationName = this.ApplicationName;
+            Guid newId = Guid.NewGuid();
+            ErrorLogEntry entry = new ErrorLogEntry(this, newId.ToString(), error);
 
-            _lock.EnterWriteLock(); 
+            _lock.AcquireWriterLock(Timeout.Infinite); 
 
             try
             {
-                var entries = _entries ?? (_entries = new EntryCollection(_size));
-                entries.Add(entry);
+                if (_entries == null)
+                    _entries = new EntryCollection(_size);
+
+                _entries.Add(entry);
             }
             finally
             {
-                _lock.ExitWriteLock();
+                _lock.ReleaseWriterLock();
             }
             
             return newId.ToString();
@@ -186,7 +180,7 @@ namespace Elmah
 
         public override ErrorLogEntry GetError(string id)
         {
-            _lock.EnterReadLock();
+            _lock.AcquireReaderLock(Timeout.Infinite);
 
             ErrorLogEntry entry;
 
@@ -199,7 +193,7 @@ namespace Elmah
             }
             finally
             {
-                _lock.ExitReadLock();
+                _lock.ReleaseReaderLock();
             }
 
             if (entry == null)
@@ -209,7 +203,7 @@ namespace Elmah
             // Return a copy that the caller can party on.
             //
 
-            var error = entry.Error.CloneObject();
+            Error error = (Error) ((ICloneable) entry.Error).Clone();
             return new ErrorLogEntry(this, entry.Id, error);
         }
 
@@ -218,10 +212,13 @@ namespace Elmah
         /// descending order of logged time.
         /// </summary>
 
-        public override int GetErrors(int pageIndex, int pageSize, ICollection<ErrorLogEntry> errorEntryList)
+        public override int GetErrors(int pageIndex, int pageSize, IList errorEntryList)
         {
-            if (pageIndex < 0) throw new ArgumentOutOfRangeException("pageIndex", pageIndex, null);
-            if (pageSize < 0) throw new ArgumentOutOfRangeException("pageSize", pageSize, null);
+            if (pageIndex < 0)
+                throw new ArgumentOutOfRangeException("pageIndex", pageIndex, null);
+
+            if (pageSize < 0)
+                throw new ArgumentOutOfRangeException("pageSize", pageSize, null);
 
             //
             // To minimize the time for which we hold the lock, we'll first
@@ -234,7 +231,7 @@ namespace Elmah
             ErrorLogEntry[] selectedEntries = null;
             int totalCount;
 
-            _lock.EnterReadLock();
+            _lock.AcquireReaderLock(Timeout.Infinite);
 
             try
             {
@@ -243,16 +240,16 @@ namespace Elmah
 
                 totalCount = _entries.Count;
 
-                var startIndex = totalCount - ((pageIndex + 1) * Math.Min(pageSize, totalCount));
-                var endIndex = Math.Min(startIndex + pageSize, totalCount);
-                var count = Math.Max(0, endIndex - startIndex);
+                int startIndex = pageIndex * pageSize;
+                int endIndex = Math.Min(startIndex + pageSize, totalCount);
+                int count = Math.Max(0, endIndex - startIndex);
                 
                 if (count > 0)
                 {
                     selectedEntries = new ErrorLogEntry[count];
 
-                    var sourceIndex = endIndex;
-                    var targetIndex = 0;
+                    int sourceIndex = endIndex;
+                    int targetIndex = 0;
 
                     while (sourceIndex > startIndex)
                         selectedEntries[targetIndex++] = _entries[--sourceIndex];
@@ -260,7 +257,7 @@ namespace Elmah
             }
             finally
             {
-                _lock.ExitReadLock();
+                _lock.ReleaseReaderLock();
             }
 
             if (errorEntryList != null && selectedEntries != null)
@@ -270,9 +267,9 @@ namespace Elmah
                 // be immutable then this step wouldn't be necessary.
                 //
 
-                foreach (var entry in selectedEntries)
+                foreach (ErrorLogEntry entry in selectedEntries)
                 {
-                    var error = entry.Error.CloneObject();
+                    Error error = (Error)((ICloneable)entry.Error).Clone();
                     errorEntryList.Add(new ErrorLogEntry(this, entry.Id, error));
                 }
             }
@@ -280,47 +277,41 @@ namespace Elmah
             return totalCount;
         }
 
-        /// <summary>
-        /// Used to clear the content of the collection used by this logger. This method is ment
-        /// for testing and debugging purposes only.
-        /// </summary>
-
-        internal void Reset()
-        {
-            _lock.EnterWriteLock();
-
-            try
-            {
-                _entries = null;
-            }
-            finally
-            {
-                _lock.ExitWriteLock();
-            }
-        }
-
-        sealed class EntryCollection : KeyedCollection<string, ErrorLogEntry>
+        private class EntryCollection : NameObjectCollectionBase
         {
             private readonly int _size;
 
-            public EntryCollection(int size)
+            public EntryCollection(int size) : base(size)
             {
                 _size = size;
             }
 
-            protected override string GetKeyForItem(ErrorLogEntry item)
+            public ErrorLogEntry this[int index]
             {
-                return item.Id;
+                get { return (ErrorLogEntry) BaseGet(index); }
             }
 
-            protected override void InsertItem(int index, ErrorLogEntry item)
+            public ErrorLogEntry this[Guid id]
             {
-                if (Count == _size)
-                {
-                    RemoveAt(0);
-                    index--;
-                }
-                base.InsertItem(index, item);
+                get { return (ErrorLogEntry) BaseGet(id.ToString()); }
+            }
+
+            public ErrorLogEntry this[string id]
+            {
+                get { return this[new Guid(id)]; }
+            }
+
+            public void Add(ErrorLogEntry entry)
+            {
+                Debug.Assert(entry != null);
+                Debug.AssertStringNotEmpty(entry.Id);
+
+                Debug.Assert(this.Count <= _size);
+
+                if (this.Count == _size)
+                    BaseRemoveAt(0);
+
+                BaseAdd(entry.Id, entry);
             }
         }
     }

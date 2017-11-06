@@ -5,14 +5,13 @@
 <%@ Import Namespace="System.Web.Configuration"%>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <script runat="server">
-    protected SccStamp Stamp = new SccStamp("$Id: Default.aspx 573 2009-05-11 14:49:01Z azizatif $");
-    protected const string RevisionDetailUrlFormat = "http://code.google.com/p/elmah/source/detail?r={0}";
+    protected SccStamp Stamp = new SccStamp("$Id: Default.aspx 006b94cc71e0 2012-03-30 16:12:52Z azizatif $");
     protected string MailPath;
     protected string SampleWebConfigPath;
     
     protected override void OnLoad(EventArgs e)
     {
-        var smtpSection = (SmtpSection) WebConfigurationManager.GetSection("system.net/mailSettings/smtp");
+        SmtpSection smtpSection = (SmtpSection) WebConfigurationManager.GetSection("system.net/mailSettings/smtp");
 
         MailPath = (smtpSection != null && smtpSection.SpecifiedPickupDirectory != null 
                     ? smtpSection.SpecifiedPickupDirectory.PickupDirectoryLocation 
@@ -97,49 +96,11 @@
         {
             font-size: small;
         }
-        .alert
-        {
-            background-color: #fcf8e3;
-            border: #fbeed5 1px solid;
-            padding: 0 2em 1em 2em;
-        }
-        .alert .warning
-        {
-            color: #b94a48;
-        }
     </style>
 </head>
 <body>
     <form runat="server">
     <h1><%= Server.HtmlEncode(Title) %></h1>
-    <% if (MailSetup.SuppressesErrorMailing) { %>
-    <div class="alert">
-        <p>
-        <strong class="warning">Warning!</strong>
-        <strong>Error mailing has been suppressed in this demo due to incomplete
-        or invalid configuration of the SMTP pick-up direction location.</strong> 
-        To have e-mails generated when an error occurs, create the directory 
-        <code><%= Server.MapPath("~/Mails") %></code> (using, for example, 
-        <code><a href="http://technet.microsoft.com/en-us/library/bb490930.aspx">MKDIR</a></code> 
-        on a Command Prompt) and then update SMTP configuration section of 
-        this web site's <code>web.config</code> of 
-        this demo as follows:
-        </p>
-        <pre><%= Server.HtmlEncode(@"
-<system.net>
-  <mailSettings>
-    <smtp deliveryMethod=""SpecifiedPickupDirectory"">
-      <specifiedPickupDirectory 
-        pickupDirectoryLocation=""" + Server.MapPath("~/Mails") + @""" />
-    </smtp>
-  </mailSettings>
-</system.net>
-".TrimStart()) %></pre>
-        You can also use another path for <code>pickupDirectoryLocation</code>
-        instead of the one suggested here as long as it exists and with
-        sufficient permissions.
-    </div>
-    <% } %>
     <h2>Introduction</h2>
     <p>
         This sample web application is set up to use ELMAH to log errors
@@ -242,7 +203,7 @@
         <pre><%= Server.HtmlEncode(Server.MapPath("~/App_Data/errors.s3db")) %></pre>
         <p>There are several clients available for querying and administrating a
         SQLite database. If you don't have one handy, check out <a href="http://sqliteadmin.orbmu2k.de/">SQLite Administrator</a> (freeware).</p>
-        <p>The sample could have just as easily used Access or VistaDB as its database, 
+        <p>The sample could have just as easily used Access as its database, 
         logged to XML files or even memory and it still could have shipped as is with just
         a couple of changes to the <code>web.config</code> file.</p>
         <p><a href="#Questions">Back to top</a></p></dd>
@@ -311,14 +272,14 @@
         <p><a href="#Questions">Back to top</a></p></dd>
         <dt><a name="MediumTrustSupport"></a>Can I use ELMAH in a medium trust application?</dt>
         <dd><p>Yes, medium trust is fully supported by ELMAH as long as you use 
-        <code>SqlErrorLog</code> (Microsoft SQL Server) or <code>VistaDBErrorLog</code> (<a href="http://www.vistadb.net/">VistaDB</a>)
+        <code>SqlErrorLog</code> (Microsoft SQL Server) or <code>SqlServerCompactErrorLog</code> (Microsoft SQL Server Compact Edition)
         as the log implementations.</p></dd>
     </dl>   
     </form>
     <hr />
     <p>        
         Updated: <%= Server.HtmlEncode(Stamp.LastChanged.ToString("f")) %>
-        (revision <a href='<%= string.Format(RevisionDetailUrlFormat, Stamp.Revision) %>'><%= Server.HtmlEncode(Stamp.Revision.ToString()) %></a>)
+        (revision <%= Server.HtmlEncode(Stamp.Revision.ToString()) %>)
     </p>
 </body>
 </html>

@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: Mask.cs 640 2009-06-01 17:22:02Z azizatif $")]
+[assembly: Elmah.Scc("$Id: Mask.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -35,11 +35,18 @@ namespace Elmah
     /// Collection of utility methods for masking values.
     /// </summary>
     
-    internal static class Mask
+    internal sealed class Mask
     {
+        public static string NullString(string s)
+        {
+            return s == null ? string.Empty : s;
+        }
+
         public static string EmptyString(string s, string filler)
         {
-            return string.IsNullOrEmpty(s) ? filler : s;
+            return Mask.NullString(s).Length == 0 ? filler : s;
         }
+        
+        private Mask() {}
     }
 }

@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: JsonTextWriter.cs 640 2009-06-01 17:22:02Z azizatif $")]
+[assembly: Elmah.Scc("$Id: JsonTextWriter.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -54,6 +54,7 @@ namespace Elmah
         private readonly TextWriter _writer;
         private readonly int[] _counters;
         private readonly char[] _terminators;
+        private int _depth;
         private string _memberName;
 
         public JsonTextWriter(TextWriter writer)
@@ -65,7 +66,10 @@ namespace Elmah
             _terminators = new char[levels];
         }
 
-        public int Depth { get; private set; }
+        public int Depth
+        {
+            get { return _depth; }
+        }
 
         private int ItemCount
         {
@@ -107,6 +111,7 @@ namespace Elmah
         public JsonTextWriter Member(string name)
         {
             if (name == null) throw new ArgumentNullException("name");
+            if (name.Length == 0) throw new ArgumentException(null, "name");
             if (_memberName != null) throw new InvalidOperationException("Missing member value.");
             _memberName = name;
             return this;
@@ -124,17 +129,17 @@ namespace Elmah
 
         private JsonTextWriter WriteImpl(string text, bool raw)
         {
-            Debug.Assert(raw || !string.IsNullOrEmpty(text));
+            Debug.Assert(raw || (text != null && text.Length > 0));
 
             if (Depth == 0 && (text.Length > 1 || (text[0] != '{' && text[0] != '[')))
                 throw new InvalidOperationException();
 
-            var writer = _writer;
+            TextWriter writer = _writer;
 
             if (ItemCount > 0)
                 writer.Write(',');   
 
-            var name = _memberName;
+            string name = _memberName;
             _memberName = null;
 
             if (name != null)
@@ -177,17 +182,28 @@ namespace Elmah
             return Write(value ? "true" : "false");
         }
 
-        private static readonly DateTime Epoch =  new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        private static readonly DateTime _epoch =  /* ... */
+#if NET_1_0 || NET_1_1
+            /* ... */ new DateTime(1970, 1, 1, 0, 0, 0);
+#else
+            /* ... */ new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+#endif
 
         public JsonTextWriter Number(DateTime time)
         {
-            var seconds = time.ToUniversalTime().Subtract(Epoch).TotalSeconds;
+            double seconds = time.ToUniversalTime().Subtract(_epoch).TotalSeconds;
             return Write(seconds.ToString(CultureInfo.InvariantCulture));
         }
 
         public JsonTextWriter String(DateTime time)
         {
-            return String(XmlConvert.ToString(time, XmlDateTimeSerializationMode.Utc));
+            string xmlTime;
+#if NET_1_0 || NET_1_1
+            xmlTime = XmlConvert.ToString(time);
+#else
+            xmlTime = XmlConvert.ToString(time, XmlDateTimeSerializationMode.Utc);
+#endif
+            return String(xmlTime);
         }
 
         private JsonTextWriter StartStructured(string start, string end)
@@ -196,7 +212,7 @@ namespace Elmah
                 throw new Exception();
 
             Write(start);
-            Depth++;
+            _depth++;
             Terminator = end[0];
             return this;
         }
@@ -209,7 +225,7 @@ namespace Elmah
             _writer.Write(' ');
             _writer.Write(Terminator);
             ItemCount = 0;
-            Depth--;
+            _depth--;
             return this;
         }
 
@@ -217,17 +233,16 @@ namespace Elmah
         {
             Debug.Assert(writer != null);
 
-            var length = (s ?? string.Empty).Length;
+            int length = Mask.NullString(s).Length;
 
             writer.Write('"');
 
-            var ch = '\0';
+            char last;
+            char ch = '\0';
 
-            for (var index = 0; index < length; index++)
+            for (int index = 0; index < length; index++)
             {
-                var last = ch;
-
-                Debug.Assert(s != null);
+                last = ch;
                 ch = s[index];
 
                 switch (ch)

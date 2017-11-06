@@ -21,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: ServiceCenter.cs 776 2011-01-12 21:09:24Z azizatif $")]
+[assembly: Elmah.Scc("$Id: ServiceCenter.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -42,7 +42,7 @@ namespace Elmah
     /// Central point for locating arbitrary services.
     /// </summary>
 
-    public static class ServiceCenter
+    public sealed class ServiceCenter
     {
         /// <summary>
         /// The default and factory-supplied implementation of 
@@ -55,7 +55,7 @@ namespace Elmah
 
         static ServiceCenter()
         {
-            _current = Default = CreateServiceContainer;
+            _current = Default = new ServiceProviderQueryHandler(CreateServiceContainer);
         }
 
         private static IServiceProvider CreateServiceContainer(object context)
@@ -100,7 +100,7 @@ namespace Elmah
 
         public static object GetService(object context, Type serviceType)
         {
-            var service = FindService(context, serviceType);
+            object service = FindService(context, serviceType);
             
             if (service == null)
                 throw new Exception(string.Format("Service of the type {0} is not available.", serviceType));
@@ -116,12 +116,14 @@ namespace Elmah
 
         public static IServiceProvider GetServiceProvider(object context)
         {
-            var sp = Current(context);
+            IServiceProvider sp = Current(context);
             
             if (sp == null)
                 throw new Exception("Service provider not available.");
             
             return sp;
         }
+
+        private ServiceCenter() {}
     }
 }

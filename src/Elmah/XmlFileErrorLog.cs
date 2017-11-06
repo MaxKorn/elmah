@@ -6,7 +6,6 @@
 //  Author(s):
 //
 //      Scott Wilson <sw@scratchstudio.net>
-//      Atif Aziz, http://www.raboof.com
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +21,7 @@
 //
 #endregion
 
-[assembly: Elmah.Scc("$Id: XmlFileErrorLog.cs 795 2011-02-16 22:29:34Z azizatif $")]
+[assembly: Elmah.Scc("$Id: XmlFileErrorLog.cs addb64b2f0fa 2012-03-07 18:50:16Z azizatif $")]
 
 namespace Elmah
 {
@@ -31,13 +30,10 @@ namespace Elmah
     using System;
     using System.Globalization;
     using System.IO;
-    using System.Linq;
     using System.Runtime.CompilerServices;
     using System.Text;
     using System.Xml;
-    using System.Collections.Generic;
-
-    using IDictionary = System.Collections.IDictionary;
+    using System.Collections;
 
     #endregion
 
@@ -57,9 +53,7 @@ namespace Elmah
         
         public XmlFileErrorLog(IDictionary config)
         {
-            if (config == null) throw new ArgumentNullException("config");
-
-            var logPath = config.Find("logPath", string.Empty);
+            string logPath = Mask.NullString(config["logPath"] as string);
 
             if (logPath.Length == 0)
             {
@@ -68,17 +62,22 @@ namespace Elmah
                 // implementation, we also try "LogPath".
                 //
 
-                logPath = config.Find("LogPath", string.Empty);
+                logPath = Mask.NullString(config["LogPath"] as string);
 
                 if (logPath.Length == 0)
                     throw new ApplicationException("Log path is missing for the XML file-based error log.");
             }
 
+#if !NET_1_1 && !NET_1_0
             if (logPath.StartsWith("~/"))
                 logPath = MapPath(logPath);
+#endif
 
             _logPath = logPath;
         }
+
+#if !NET_1_1 && !NET_1_0
+
 
         /// <remarks>
         /// This method is excluded from inlining so that if 
@@ -92,6 +91,8 @@ namespace Elmah
             return System.Web.Hosting.HostingEnvironment.MapPath(path);
         }
 
+#endif
+
         /// <summary>
         /// Initializes a new instance of the <see cref="XmlFileErrorLog"/> class
         /// to use a specific path to store/load XML files.
@@ -99,18 +100,16 @@ namespace Elmah
         
         public XmlFileErrorLog(string logPath)
         {
-            if (logPath == null) throw new ArgumentNullException("logPath");
-            if (logPath.Length == 0) throw new ArgumentException(null, "logPath");
             _logPath = logPath;
         }
-
+        
         /// <summary>
         /// Gets the path to where the log is stored.
         /// </summary>
         
         public virtual string LogPath
         {
-            get { return _logPath; }
+            get { return Mask.NullString(_logPath); }
         }
 
         /// <summary>
@@ -133,22 +132,24 @@ namespace Elmah
         
         public override string Log(Error error)
         {
-            var logPath = LogPath;
+            string logPath = LogPath;
             if (!Directory.Exists(logPath))
                 Directory.CreateDirectory(logPath);
 
-            var errorId = Guid.NewGuid().ToString();
+            string errorId = Guid.NewGuid().ToString();
             
-            var timeStamp = (error.Time > DateTime.MinValue ? error.Time : DateTime.Now);
+            DateTime timeStamp = (error.Time > DateTime.MinValue ? error.Time : DateTime.Now);
             
-            var fileName = string.Format(CultureInfo.InvariantCulture, 
+            string fileName = string.Format(CultureInfo.InvariantCulture, 
                                   @"error-{0:yyyy-MM-ddHHmmssZ}-{1}.xml", 
                                   /* 0 */ timeStamp.ToUniversalTime(), 
                                   /* 1 */ errorId);
 
-            var path = Path.Combine(logPath, fileName);
+            string path = Path.Combine(logPath, fileName);
+            
+            XmlTextWriter writer = new XmlTextWriter(path, Encoding.UTF8);
 
-            using (var writer = new XmlTextWriter(path, Encoding.UTF8))
+            try
             {
                 writer.Formatting = Formatting.Indented;
                 writer.WriteStartElement("error");
@@ -157,7 +158,11 @@ namespace Elmah
                 writer.WriteEndElement();
                 writer.Flush();
             }
-
+            finally
+            {
+                writer.Close();
+            }                
+            
             return errorId;
         }
 
@@ -165,51 +170,69 @@ namespace Elmah
         /// Returns a page of errors from the folder in descending order 
         /// of logged time as defined by the sortable filenames.
         /// </summary>
-
-        public override int GetErrors(int pageIndex, int pageSize, ICollection<ErrorLogEntry> errorEntryList)
+        
+        public override int GetErrors(int pageIndex, int pageSize, IList errorEntryList)
         {
-            if (pageIndex < 0) throw new ArgumentOutOfRangeException("pageIndex", pageIndex, null);
-            if (pageSize < 0) throw new ArgumentOutOfRangeException("pageSize", pageSize, null);
+            if (pageIndex < 0)
+                throw new ArgumentOutOfRangeException("pageIndex", pageIndex, null);
 
-            var logPath = LogPath;
-            var dir = new DirectoryInfo(logPath);
+            if (pageSize < 0)
+                throw new ArgumentOutOfRangeException("pageSize", pageSize, null);
+
+            /* Get all files in directory */
+            string logPath = LogPath;
+            DirectoryInfo dir = new DirectoryInfo(logPath);
+            
             if (!dir.Exists)
                 return 0;
 
-            var infos = dir.GetFiles("error-*.xml");
-            if (!infos.Any())
+            FileSystemInfo[] infos = dir.GetFiles("error-*.xml");
+
+            if (infos.Length < 1)
                 return 0;
 
-            var files = infos.Where(info => IsUserFile(info.Attributes))
-                             .OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
-                             .Select(info => Path.Combine(logPath, info.Name))
-                             .Reverse()
-                             .ToArray();
+            string[] files = new string[infos.Length];
+            int count = 0;
+
+            /* Get files that are not marked with system and hidden attributes */
+            foreach (FileSystemInfo info in infos)
+            {
+                if (IsUserFile(info.Attributes))
+                    files[count++] = Path.Combine(logPath, info.Name);
+            }
+
+            InvariantStringArray.Sort(files, 0, count);
+            Array.Reverse(files, 0, count);
 
             if (errorEntryList != null)
             {
-                var entries = files.Skip(pageIndex * pageSize)
-                                   .Take(pageSize)
-                                   .Select(LoadErrorLogEntry);
+                /* Find the proper page */
+                int firstIndex = pageIndex * pageSize;
+                int lastIndex = (firstIndex + pageSize < count) ? firstIndex + pageSize : count;
 
-                foreach (var entry in entries)
-                    errorEntryList.Add(entry);
+                /* Open them up and rehydrate the list */
+                for (int i = firstIndex; i < lastIndex; i++)
+                {
+                    XmlTextReader reader = new XmlTextReader(files[i]);
+
+                    try
+                    {
+                        while (reader.IsStartElement("error"))
+                        {
+                            string id = reader.GetAttribute("errorId");
+                            Error error = ErrorXml.Decode(reader);
+                            errorEntryList.Add(new ErrorLogEntry(this, id, error));
+                        }
+                    }
+                    finally
+                    {
+                        reader.Close();
+                    }
+                }
             }
-
-            return files.Length; // Return total
-        }
-
-        private ErrorLogEntry LoadErrorLogEntry(string path)
-        {
-            using (var reader = XmlReader.Create(path))
-            {
-                if (!reader.IsStartElement("error"))
-                    return null;
-                                           
-                var id = reader.GetAttribute("errorId");
-                var error = ErrorXml.Decode(reader);
-                return new ErrorLogEntry(this, id, error);
-            }
+    
+            /* Return how many are total */
+            return count;
         }
 
         /// <summary>
@@ -220,24 +243,36 @@ namespace Elmah
         {
             try
             {
-                id = (new Guid(id)).ToString(); // validate GUID
+                /* Make sure the identifier is a valid GUID */
+                id = (new Guid(id)).ToString();
             }
             catch (FormatException e)
             {
                 throw new ArgumentException(e.Message, id, e);
             }
 
-            var file = new DirectoryInfo(LogPath).GetFiles(string.Format("error-*-{0}.xml", id))
-                                                 .FirstOrDefault();
-            
-            if (file == null)
+            /* Get the file folder list - should only return one ever */
+            DirectoryInfo dir = new DirectoryInfo(LogPath);
+            FileInfo[] files = dir.GetFiles(string.Format("error-*-{0}.xml", id));
+
+            if (files.Length < 1)
                 return null;
 
+            FileInfo file = files[0];
             if (!IsUserFile(file.Attributes))
                 return null;
 
-            using (var reader = XmlReader.Create(file.FullName))
-                return new ErrorLogEntry(this, id, ErrorXml.Decode(reader));
+            XmlTextReader reader = new XmlTextReader(file.FullName);
+            
+            try
+            {
+                Error error = ErrorXml.Decode(reader);
+                return new ErrorLogEntry(this, id, error);
+            }
+            finally
+            {
+                reader.Close();
+            }
         }
 
         private static bool IsUserFile(FileAttributes attributes)
